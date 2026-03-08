@@ -21,7 +21,6 @@ Also I can now use my old crappy laptop as a Local Cloud Server that use the FTP
 This tool is very useful !
 
 ## The Client in action:
-<video width="auto" height="auto" loop controls>
-  <source src="README_Assets/python_ftp_client_working_rec.mp4" type="video/mp4">
-</video>
+![](README_Assets/python_ftp_client_working_rec.mov)
+![](README_Assets/python_ftp_client_working_rec.mp4)
 
