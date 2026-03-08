@@ -21,8 +21,7 @@ Also I can now use my old crappy laptop as a Local Cloud Server that use the FTP
 This tool is very useful !
 
 ## The Client in action:
-<video src="README_Assets/python_ftp_client_working_rec.mp4" controls="controls" style="max-width: 100%;">
-  Votre navigateur ne supporte pas la lecture de vidéos HTML5.
-</video>
+https://github.com/user-attachments/assets/8993aee9-680f-4d4a-b1eb-a1c0d02903c8
+
 
 
