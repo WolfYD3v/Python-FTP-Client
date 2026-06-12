@@ -6,4 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "ftputil>=5.1.0",
+    "textual>=8.2.4",
+    "textual-dev>=1.8.0",
+    "textual-fspicker>=1.0.1",
 ]
