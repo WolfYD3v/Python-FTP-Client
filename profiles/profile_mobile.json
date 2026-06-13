@@ -2,5 +2,6 @@
     "adress": "192.168.1.12",
     "user": "android",
     "password": "android",
-    "port": 2221
+    "port": 2221,
+    "description": "A way to connect to my phone, to test my client"
 }
