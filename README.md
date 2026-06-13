@@ -21,5 +21,9 @@ I have 60 Gb of avaible Local Cloud storage now :) For free, and only dedicated 
 
 This tool is very useful, and with the update this is better.
 
-
-
+## Some screenshots off the Client:
+![Screenshot 1](https://github.com/WolfYD3v/Python-FTP-Client/blob/main/github/src1.png)
+![Screenshot 2](https://github.com/WolfYD3v/Python-FTP-Client/blob/main/github/src2.png)
+![Screenshot 3](https://github.com/WolfYD3v/Python-FTP-Client/blob/main/github/src3.png)
+![Screenshot 4](https://github.com/WolfYD3v/Python-FTP-Client/blob/main/github/src4.png)
+![Screenshot 5](https://github.com/WolfYD3v/Python-FTP-Client/blob/main/github/src5.png)
