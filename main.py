@@ -1,248 +1,318 @@
 import ftputil
 import ftplib
 import json
-import sys
+import subprocess
+from subprocess import CompletedProcess
 import os
 import time
 
-class FTP_Client():
-    ftp_host = None
+from textual.app import App, ComposeResult
+from textual.containers import VerticalGroup, HorizontalGroup, VerticalScroll
+from textual.widgets import Button, Footer, Header, Label
+from textual import on
 
-    adress = "192.168.1.12"
-    user = "anonymous"
-    password = "anonymous@"
-    port = 2221
-    session_factory = None
+from textual_fspicker import FileOpen, SelectDirectory
 
-    host_current_dir = ""
-    host_current_dir_files = []
 
-    actions = ["mkdir", "upload", "delete", "end"]
-    delete_action_idx = -1
 
-    local_download_dir_path = "/home/wolfyd3v/Documents/"
-
-    def load_profile(self, profile_name: str) -> None:
-        with open(f"profiles/profile_{profile_name}.json", "r") as profile_file:
-            profile_data = json.loads(profile_file.read())
-            self.adress = profile_data["adress"]
-            self.user = profile_data["user"]
-            self.password = profile_data["password"]
-            self.port = profile_data["port"]
-            print(f"Profile '{profile_name}' Data: {profile_data}")
-
-    def init_session_factory(self) -> None:
-        self.session_factory = ftplib.FTP
-        self.session_factory.port = self.port
+class FilesExplorer_File(HorizontalGroup):
+    def __init__(self, file_name: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.file_name = file_name
     
-    def count_files_at(self, folder: str) -> int:
-        file_count = len(self.ftp_host.listdir(folder))
-        return file_count
-
-    def list_items(self) -> None:
-        self.host_current_dir = self.ftp_host.getcwd()
-        self.host_current_dir_files = self.ftp_host.listdir(self.host_current_dir)
-        self.host_current_dir_files.append("..")
-
-
-        print(f"Current location: {self.host_current_dir}")
-        idx = 1
-        for elem in self.host_current_dir_files:
-            console_output = f"| {idx} | {elem} "
-            if not self.ftp_host.path.isfile(elem) and not elem in self.actions: console_output += f"[{self.count_files_at(elem)} element(s)]"
-
-            print(console_output)
-            idx += 1
-        
-        print("")
-        print("--ACTIONS--")
-        for action in self.actions:
-            self.host_current_dir_files.append(action)
-            print(f"| {idx} | {action} ")
-            idx += 1
+    def compose(self) -> ComposeResult:
+        yield Button(f"🖹 | {self.file_name}", id="main-btn", classes="long-button", variant="primary")
+        yield Button("Download", id="download-btn", variant="success")
+        yield Button("Delete", id="delete-btn", variant="error")
     
     def download_file(self, file: str) -> None:
-        local_path = f"{self.local_download_dir_path}{file}"
-        local_path = local_path.replace('"', '').replace("'", "")
-        self.ftp_host.download(file, local_path)
-        print(f"File '{file}' Downloaded Succesfully!")
+        self.app.ftp_manager.download_file(file)
+        self.app.notify(f"File '{file}' Downloaded Succesfully!")
+    
+    def delete_file(self, file: str) -> None:
+        self.app.ftp_manager.delete_file(file)
+        self.app.notify(f"File '{file}' Deleted!")
+        self.app.refresh(recompose=True)
+    
+    @on(Button.Pressed)
+    def handle_file_download(self, event: Button.Pressed) -> None:
+        button = event.button
+        match button.id:
+            case "main-btn": self.download_file(self.file_name)
+            case "download-btn": self.download_file(self.file_name)
+            case "delete-btn": self.delete_file(self.file_name)
+
+class FilesExplorer_Folder(HorizontalGroup):
+    def __init__(self, folder_name: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.folder_name = folder_name
+    
+    def compose(self) -> ComposeResult:
+        yield Button(f"🗁  | {self.folder_name}   [{self.app.ftp_manager.count_files_at(self.folder_name)}]", id="main-btn", classes="long-button", variant="warning")
+        yield Button("Brow", id="brow-btn", variant="success")
+        yield Button("Download", id="download-btn", variant="success")
+        yield Button("Delete", id="delete-btn", variant="error")
+    
+    def delete_folder(self, folder_name: str) -> None:
+        self.app.ftp_manager.delete_dir(folder_name)
+        self.app.notify(f"Folder '{folder_name}' Deleted !")
+    
+    def download_folder(self, folder_name: str) -> None:
+        self.app.ftp_manager.download_dir(folder_name)
+        self.app.notify(f"Folder '{folder_name}' Fully Downloaded !")
+    
+    @on(Button.Pressed)
+    def handle_folder_interaction(self, event: Button.Pressed) -> None:
+        button = event.button
+
+        match button.id:
+            case "main-btn": self.app.ftp_manager.change_dir(self.folder_name)
+            case "brow-btn": self.app.ftp_manager.change_dir(self.folder_name)
+            case "download-btn": self.download_folder(self.folder_name)
+            case "delete-btn": self.delete_folder(self.folder_name)
+        
+        self.app.refresh(recompose = True)
+
+class FTP_Client_FilesExplorer(VerticalGroup):
+    host_current_dir: str = ""
+
+    def compose(self) -> ComposeResult:
+        self.host_current_dir = self.app.ftp_manager.get_current_dir()
+        dir_content: list = []
+        for dir_element in self.app.ftp_manager.list_dir(self.host_current_dir):
+            dir_content.append(dir_element)
+
+        with HorizontalGroup(classes="file-explorer-top-section"):
+            yield Button("Create New Directory", id="new-dir-btn", classes="long-button file-explorer-top-section-button", variant="primary")
+            yield Button("Upload File", id="upload-file-btn", classes="long-button file-explorer-top-section-button", variant="primary")
+            yield Button("Upload Directory", id="upload-dir-btn", classes="long-button file-explorer-top-section-button", variant="primary")
+        yield Label(f"Current Location: {self.host_current_dir}", classes="file-explorer-current-location-text")
+        if self.app.ftp_manager.get_current_dir() != "/": yield Button("..", id="go-back-btn", classes="long-button", variant="success")
+        with VerticalScroll():
+            for dir_element in dir_content:
+                if self.app.ftp_manager.ftp_host.path.isdir(dir_element): yield FilesExplorer_Folder(dir_element)
+                else: yield FilesExplorer_File(dir_element)
+        #yield FileOpen(title="ee",open_button="r",cancel_button="t")
+    
+    @on(Button.Pressed)
+    def handle_top_actions(self, event: Button.Pressed) -> None:
+        button = event.button
+
+        match button.id:
+            case "go-back-btn":
+                self.app.ftp_manager.change_dir("..")
+                self.app.refresh(recompose=True)
+            case "new-dir-btn": self.new_dir()
+            case "upload-file-btn": self.app.push_screen(FileOpen(
+                location=".",
+                open_button="Upload"
+            ), callback=self.upload)
+            case "upload-dir-btn": self.app.push_screen(SelectDirectory(
+                location=".",
+                select_button="Upload"
+            ), callback=self.upload)
+    
+    def new_dir(self):
+        completed_process: CompletedProcess = subprocess.run(
+            ["kitty", "python3", os.path.join(os.path.dirname(__file__), "newdir_dialog.py")],
+            capture_output=True, text=True
+        )
+        if completed_process.returncode == 0:
+            new_dir_name: str = ""
+            with open(os.path.join(os.path.dirname(__file__), "newdir_dialog_output.txt"), "r") as ndo:
+                new_dir_name = ndo.read()
+                ndo.close()
+            os.remove(os.path.join(os.path.dirname(__file__), "newdir_dialog_output.txt"))
+            if self.app.ftp_manager.new_dir(new_dir_name):
+                self.app.refresh(recompose = True)
+                self.app.notify(f"Directory '{new_dir_name}' Created !")
+            else: self.app.notify(f"Directory '{new_dir_name}' Already Exist In The Current Directory")
+        else: self.app.notify(f"Cannot Create Directory", variant="error")
+    
+    def upload(self, upload_path: str) -> None:
+        if upload_path == None: return
+
+        _upload_path: str = str(upload_path)
+        _upload_path.strip()
+        _upload_path.replace('"', '').replace("'", "")
+
+        if os.path.isfile(_upload_path):
+            self.app.ftp_manager.upload_file(_upload_path)
+            self.app.notify(f"File '{os.path.basename(_upload_path)}' Uploaded Succesfully!")
+        else:
+            self.app.ftp_manager.upload_dir(_upload_path)
+            self.app.notify(f"Directory '{os.path.basename(_upload_path)}' Uploaded Succesfully!")
+
+        self.app.refresh(recompose=True)
+
+
+''' The Profile Class '''
+class Profile():
+    def __init__(self, name: str, adress: str, username: str, password: str, port: int, description: str):
+        self.name: str          = name
+        self.adress: str        = adress
+        self.username: str      = username
+        self.password: str      = password
+        self.port: int          = port
+        self.description: str   = description
+
+''' The Profile Selector Card, displaying some informations '''
+class ProfileSelector(HorizontalGroup):
+    def __init__(self, profile: Profile, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.profile: Profile = profile
+        self.label: str = profile.name
+    
+    def compose(self) -> ComposeResult:
+        yield Button(self.label, variant="success")
+        yield VerticalGroup(
+            Label(self.profile.description),
+            Label(f"ftp://{self.profile.username}:{self.profile.password}@{self.profile.adress}:{self.profile.port}")
+        )
+    
+    @on(Button.Pressed)
+    def handle_profile_selection(self, event: Button.Pressed) -> None:
+        global profile_seclected
+        profile_seclected = self.profile
+
+        self.app.ftp_manager.create_ftp_host()
+        self.app.profile_mode = False
+        self.app.refresh(recompose = True)
+
+''' The Profile Selection Menu of the Client '''
+class FTP_Client_ProfilesMenu(VerticalGroup):
+    profiles_location_path: str = os.path.join(os.path.dirname(__file__), "profiles")
+    profiles_list: list = []
+    default_profile: Profile = None
+
+    def compose(self) -> ComposeResult:
+        yield Label("Select a profile:")
+
+        self.load_profiles()
+        with VerticalGroup():
+            for profile in self.profiles_list:
+                yield ProfileSelector(profile)
+    
+    def load_profiles(self) -> None:
+        temp_profiles_list = os.listdir(self.profiles_location_path)
+        temp_profiles_list.remove("profile_template.json")
+
+        if len(temp_profiles_list) <= 0: self.app.action_quit()
+        for profile_file in temp_profiles_list:
+            with open(os.path.join(self.profiles_location_path, profile_file), "r") as pf:
+                profile_data = json.loads(pf.read())
+                profile_name = profile_file.replace("profile_", "").replace(".json", "")
+                self.profiles_list.append(Profile(
+                    profile_name,
+                    profile_data["adress"],
+                    profile_data["user"],
+                    profile_data["password"],
+                    profile_data["port"],
+                    profile_data["description"]
+                ))
+
+''' The FTP Manager Class, where all the FTP related functions are '''
+class FTP_Manager():
+    def __init__(self):
+        self.ftp_host: ftputil.FTPHost = None
+        self.local_path = "/home/wolfyd3v/Documents/"
+        self.local_path = self.local_path.replace('"', '').replace("'", "")
+    
+    ''' Create the FTP Host '''
+    def create_ftp_host(self) -> None:
+        if not(profile_seclected): return
+
+        session_factory: ftplib.FTP = ftplib.FTP
+        session_factory.port = profile_seclected.port
+        self.ftp_host = ftputil.FTPHost(
+            profile_seclected.adress,
+            profile_seclected.username,
+            profile_seclected.password,
+            session_factory = session_factory
+        )
+    
+    # Files Functions
+    def download_file(self, file: str) -> None:
+        self.ftp_host.download(file, f"{self.local_path}/{file}")
     
     def delete_file(self, file: str) -> None:
         self.ftp_host.remove(file)
-        print(f"File '{file}' Deleted!")
-        time.sleep(0.1)
-    
-    def download_folder(self, folder: str) -> None:
-        if not os.path.exists(self.local_download_dir_path + folder): os.mkdir(self.local_download_dir_path + folder)
-
-        for root, dirs, files in self.ftp_host.walk(folder):
-            # Calcul du chemin relatif
-            rel_path = os.path.relpath(root, folder)
-            local_root = os.path.join(self.local_download_dir_path + folder, rel_path)
-
-            # Créer le dossier local
-            os.makedirs(local_root, exist_ok=True)
-
-            # Télécharger les fichiers
-            for file in files:
-                remote_file = self.ftp_host.path.join(root, file)
-                local_file = os.path.join(local_root, file)
-
-                self.ftp_host.download(remote_file, local_file)
-                print(f"File '{file}' Downloaded Succesfully!")
-                time.sleep(0.1)
-    
-    def delete_folder(self, folder: str) -> None:
-        self.ftp_host.rmtree(folder)
-    
-    def delete(self) -> None:
-        print("--FILE DELETION--")
-        element_to_delete_idx = int(input(f"Type the corresponding idx of the element to delete [from 1 to {len(self.host_current_dir_files) - 4}]: "))
-        if element_to_delete_idx > 0 and element_to_delete_idx <= len(self.host_current_dir_files):
-            element_to_delete = self.host_current_dir_files[element_to_delete_idx - 1]
-
-            if self.ftp_host.path.isfile(element_to_delete): self.delete_file(element_to_delete)
-            else: self.delete_folder(element_to_delete)
-        
-        else: self.explore_files()
-    
-    
-    def explore_files(self) -> None:
-        print("")
-        self.list_items()
-
-        item_idx = int(input("Type the corresponding idx: "))
-        print("")
-
-        if item_idx > 0 and item_idx <= len(self.host_current_dir_files):
-            item_selected = self.host_current_dir_files[item_idx - 1]
-
-            match item_selected:
-                case "delete":
-                    self.delete()
-                    self.explore_files()
-                case "upload": self.upload()
-                case "end": self.stop()
-
-            if self.ftp_host.path.isfile(item_selected): self.manage_file(item_selected)
-            else: self.manage_folder(item_selected)
-                
-
-    def manage_file(self, file: str) -> None:
-        self.download_file(file)
-
-        if self.check_for_stoping_processus(): self.stop()
-        else: self.explore_files()
-    
-    def manage_folder(self, folder: str) -> None:
-        folder_action = ""
-
-        if folder == "mkdir":
-            new_folder_name = input("New Folder Name: ")
-            self.create_folder(new_folder_name)
-            self.ftp_host.chdir(new_folder_name)
-            self.explore_files()
-        
-        if folder != "..":
-            folder_action = input(f"Download Folder [type 1] | Explore Files In '{folder}' [type somathing else] ")
-            print("")
-        if not folder_action == "1":
-            self.ftp_host.chdir(folder)
-            self.explore_files()
-        else:
-            self.download_folder(folder)
-            
-            if self.check_for_stoping_processus(): self.stop()
-            else: self.explore_files()
-    
-    def create_folder(self, folder_name: str) -> None:
-        print("--FOLDER CREATION--")
-        if not self.ftp_host.path.exists(folder_name): self.ftp_host.mkdir(folder_name)
-
-
-
-    def upload(self) -> None:
-        file_to_upload_path = input("Drag and drop a file/type file path here: ").strip()
-        file_to_upload_path = file_to_upload_path.replace('"', '').replace("'", "")
-
-        if os.path.isfile(file_to_upload_path): self.upload_file(file_to_upload_path)
-        else: self.upload_folder(file_to_upload_path)
-
-        self.explore_files()
-
     
     def upload_file(self, file_path: str) -> None:
         file = os.path.basename(file_path)
-
         with open(file_path, "rb") as source:
             with self.ftp_host.open(f"{self.ftp_host.curdir}/{file}", "wb") as target:
                 self.ftp_host.copyfileobj(source, target)
-        print(f"File '{file}' Uploaded Succesfully!")
     
-    def upload_folder(self, file_to_upload_path: str) -> None:
-        print(f"Uploading folder: {file_to_upload_path}")
-        folder_name = os.path.basename(file_to_upload_path)
-        self.create_folder(folder_name)
-        self.ftp_host.chdir(folder_name)
+    def count_files_at(self, directory: str) -> int:
+        return len(self.ftp_host.listdir(directory))
+    
+    # Directories Functions
+    def download_dir(self, directory: str) -> None:
+        if not os.path.exists(self.local_path + directory): os.mkdir(self.local_path + directory)
 
-        for file in os.listdir(file_to_upload_path):
-            full_path = os.path.join(file_to_upload_path, file)
-            if os.path.isdir(full_path): self.upload_folder(full_path)
+        for root, dirs, files in self.ftp_host.walk(directory):
+            rel_path = os.path.relpath(root, directory)
+            local_root = os.path.join(self.local_path + directory, rel_path)
+            os.makedirs(local_root, exist_ok=True)
+            for file in files:
+                remote_file = self.ftp_host.path.join(root, file)
+                local_file = os.path.join(local_root, file)
+                self.ftp_host.download(remote_file, local_file)
+                time.sleep(0.1)
+    
+    def delete_dir(self, directory: str) -> None:
+        self.ftp_host.rmtree(directory)
+    
+    def change_dir(self, directory: str) -> None:
+        self.ftp_host.chdir(directory)
+    
+    def get_current_dir(self) -> str:
+        return self.ftp_host.getcwd()
+
+    def new_dir(self, directory_name: str) -> bool:
+        if not self.ftp_host.path.exists(directory_name):
+            self.ftp_host.mkdir(directory_name)
+            return True
+        return False
+
+    def list_dir(self, directory: str) -> list:
+        return self.ftp_host.listdir(directory)
+    
+    def upload_dir(self, local_directory_path: str) -> None:
+        folder_name = os.path.basename(local_directory_path)
+        self.new_dir(folder_name)
+        self.change_dir(folder_name)
+
+        for file in os.listdir(local_directory_path):
+            full_path = os.path.join(local_directory_path, file)
+            if os.path.isdir(full_path): self.upload_dir(full_path)
             else:
                 self.upload_file(full_path)
                 time.sleep(0.1)
         
         self.ftp_host.chdir("..")
-    
-    def start(self) -> None:
-        self.init_session_factory()
-        self.ftp_host = ftputil.FTPHost(
-            self.adress,
-            self.user,
-            self.password,
-            session_factory = self.session_factory
-        )
 
-        self.explore_files()
-        
-    def check_for_stoping_processus(self) -> bool:
-        stop_process = input("Stop Process? (type something to stop the process) ")
-        return stop_process != ""
-    
-    def stop(self, reason: str = "Processus Stoped") -> None:
-        if not self.ftp_host: return
+''' The FTP Client App '''
+class FTP_Client(App):
+    BINDINGS = [("q", "quit", "Quit the app")]
+    CSS_PATH = "style.tcss"
 
-        print(reason)
-        self.ftp_host.close()
-        sys.exit(0)
+    profile_mode: bool = True
+    ftp_manager: FTP_Manager = FTP_Manager()
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+
+        if self.profile_mode: yield FTP_Client_ProfilesMenu()
+        else: yield FTP_Client_FilesExplorer()
+
+        yield Footer()
 
 
 
-def load_profiles() -> str:
-    profiles_location_path = os.path.join(os.path.dirname(__file__), "profiles")
-    profiles = os.listdir(profiles_location_path)
-    profiles.remove("profile_template.json")
-
-    _profiles_list_str = "|[ "
-    for profile in profiles:
-        profile = profile.replace("profile_", "")
-        profile = profile.replace(".json", "")
-        _profiles_list_str += profile + " "
-    _profiles_list_str += "]|"
-
-    default_profile = profiles[0]
-    default_profile = default_profile.replace("profile_", "")
-    default_profile = default_profile.replace(".json", "")
-
-    return _profiles_list_str, default_profile
+profile_seclected: Profile = None
 
 if __name__ == "__main__":
-    profiles_list_str, default_profile = load_profiles()
-
-    profile = input(f"Profile {profiles_list_str} (default: {default_profile}): ")
-    if profile == "": profile = default_profile
-
-    ftp_client = FTP_Client()
-    ftp_client.load_profile(profile)
-
-    ftp_client.start()
+    ftp_client: FTP_Client = FTP_Client()
+    ftp_client.run()
