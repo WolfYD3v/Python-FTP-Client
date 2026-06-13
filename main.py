@@ -92,7 +92,6 @@ class FTP_Client_FilesExplorer(VerticalGroup):
             for dir_element in dir_content:
                 if self.app.ftp_manager.ftp_host.path.isdir(dir_element): yield FilesExplorer_Folder(dir_element)
                 else: yield FilesExplorer_File(dir_element)
-        #yield FileOpen(title="ee",open_button="r",cancel_button="t")
     
     @on(Button.Pressed)
     def handle_top_actions(self, event: Button.Pressed) -> None:

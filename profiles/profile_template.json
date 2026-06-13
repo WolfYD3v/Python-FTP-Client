@@ -1,0 +1,7 @@
+{
+    "adress": "the adress of the FTP Server",
+    "user": "the user name to connect",
+    "password": "the password to connect",
+    "port": 1,
+    "description": "A short description of the profile"
+}
